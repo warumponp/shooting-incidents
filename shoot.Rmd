@@ -1,0 +1,99 @@
+---
+---
+---
+
+# NYDP Shooting Incident Data
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(dplyr)
+library(class)
+library(caret)
+```
+
+## Project Step 2: Tidy and Transform Your Data & Project Step 3: Add Visualizations and Analysis
+
+For analyze shooting incident time distribution, We need to convert date to month and time to hours
+
+```{r}
+shoot <- read_csv("https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD")
+summary(shoot)
+```
+
+The histogram show that the incidents frequently occurred in the evening and night
+
+```{r}
+shoot$OCCUR_TIME <- strptime(shoot$OCCUR_TIME, format="%H:%M:%S")
+hours <-  as.numeric(format(shoot$OCCUR_TIME, format="%H"))
+hist(hours)
+shoot$OCCUR_TIME <-hours
+```
+
+The histogram show that the incidents frequently occurred in the middle of the year(July-August)
+
+```{r}
+shoot$OCCUR_DATE <- strptime(shoot$OCCUR_DATE, format="%m/%d/%y")
+months <-  as.numeric(format(shoot$OCCUR_DATE, format="%m"))
+hist(months)
+shoot$OCCUR_DATE <- months
+```
+
+Top Borough where the shooting incident frequently occurred
+
+```{r}
+shoot %>% 
+  count(BORO, name = "Times", sort = TRUE) %>% 
+  slice_head(n = 5)
+```
+
+### data modeling
+
+My classes are imbalanced.
+
+```{r}
+barplot(prop.table(table(shoot$STATISTICAL_MURDER_FLAG)),
+        col = cm.colors(2),
+        ylim = c(0, 0.7),
+        main = "Class Distribution")
+```
+
+So, we need to balance the data.
+
+```{r}
+shoot_bl <- subset(shoot, select =c(OCCUR_DATE,OCCUR_TIME,BORO,STATISTICAL_MURDER_FLAG))
+shoot_bl$BORO <- as.integer(as.factor(shoot_bl$BORO))
+shoot_bl <- slice_sample(shoot_bl, n = 5000, by = STATISTICAL_MURDER_FLAG)
+summary(shoot_bl)
+```
+
+change False,True to 0,1
+
+```{r}
+shoot_bl$STATISTICAL_MURDER_FLAG <- as.integer(as.logical(shoot_bl$STATISTICAL_MURDER_FLAG))
+summary(shoot_bl)
+```
+
+Train test split
+
+```{r}
+smp_size <- floor(0.70 * nrow(shoot_bl))
+set.seed(123)
+train_ind <- sample(seq_len(nrow(shoot_bl)), size = smp_size)
+train <- shoot_bl[train_ind, ]
+test <- shoot_bl[-train_ind, ]
+```
+
+fit data to SVM model
+
+```{r}
+model <- knn(train, test, cl =train$STATISTICAL_MURDER_FLAG) 
+#model
+confusionMatrix(model, data=as.factor(test$STATISTICAL_MURDER_FLAG) )
+```
+
+## Project Step 4: Add Bias Identification
+
+The KNN model result may show that we can predict STATISTICAL_MURDER_FLAG from OCCUR_DATE,OCCUR_TIME and BORO. But, it may contain bias.
+
+The bias for kNN can be thought of classification accuracy. For small values of k, our model performs exceptionally on the training data. k=1 even does perfect classification! For large values of $k$, our models performs quite poorly, hardly better than random guessing. Thus bias increases as k increases.
